@@ -3,10 +3,12 @@ package com.sprint.controller;
 public class Mapping {
     private String className;
     private String methodName;
+    private Class<?>[] parameterTypes;
 
-    public Mapping(String className, String methodName) {
+    public Mapping(String className, String methodName, Class<?>[] parameterTypes) {
         this.className = className;
         this.methodName = methodName;
+        this.parameterTypes = parameterTypes;
     }
 
     public String getClassName() {
@@ -15,6 +17,10 @@ public class Mapping {
 
     public String getMethodName() {
         return methodName;
+    }
+
+    public Class<?>[] getParameterTypes() {
+        return parameterTypes;
     }
 
     @Override
