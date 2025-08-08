@@ -7,10 +7,12 @@ import java.net.URL;
 import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import com.sprint.annotation.AnnotationController;
+import com.sprint.annotation.GET;
+import com.sprint.controller.Mapping;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
-    private List<String> controllers = new ArrayList<>();
+    private HashMap<String, Mapping> mappings = new HashMap<>();
     private boolean scanned = false;
 
     public void init() {
@@ -37,7 +39,13 @@ public class FrontController extends HttpServlet {
                             try {
                                 Class<?> clazz = Class.forName(className);
                                 if (clazz.isAnnotationPresent(AnnotationController.class)) {
-                                    controllers.add(clazz.getSimpleName());
+                                    for (Method method : clazz.getDeclaredMethods()) {
+                                        if (method.isAnnotationPresent(GET.class)) {
+                                            GET getAnnotation = method.getAnnotation(GET.class);
+                                            String url = getAnnotation.value();
+                                            mappings.put(url, new Mapping(clazz.getName(), method.getName()));
+                                        }
+                                    }
                                 }
                             } catch (ClassNotFoundException e) {
                                 // Ignorer les classes non trouvées
@@ -54,9 +62,17 @@ public class FrontController extends HttpServlet {
         response.setContentType("text/html;charset=UTF-8");
         PrintWriter out = response.getWriter();
         try {
-            out.println("Liste des contrôleurs annotés :<br>");
-            for (String controller : controllers) {
-                out.println("- " + controller + "<br>");
+            String path = request.getServletPath();
+            if (path == null || path.isEmpty()) {
+                path = "/";
+            }
+            
+            Mapping mapping = mappings.get(path);
+            if (mapping != null) {
+                out.println("Mapped URL: " + path + "<br>");
+                out.println("Mapping: " + mapping + "<br>");
+            } else {
+                out.println("No mapping found for: " + path + "<br>");
             }
         } finally {
             out.close();
