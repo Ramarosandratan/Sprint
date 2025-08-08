@@ -6,7 +6,11 @@
     
     <servlet>
         <servlet-name>FrontController</servlet-name>
-        <servlet-class>com.sprint.sprint.FrontController</servlet-class>
+        <servlet-class>com.sprint.controller.FrontController</servlet-class>
+        <init-param>
+            <param-name>controller-package</param-name>
+            <param-value>com.sprint.controller</param-value>
+        </init-param>
     </servlet>
     
     <servlet-mapping>
