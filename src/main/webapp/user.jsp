@@ -5,7 +5,8 @@
 </head>
 <body>
     <h1>User Information</h1>
-    <p>Name: ${name}</p>
-    <p>Age: ${age}</p>
+    <p>First Name: ${user.firstName}</p>
+    <p>Last Name: ${user.lastName}</p>
+    <p>Age: ${user.age}</p>
 </body>
 </html>

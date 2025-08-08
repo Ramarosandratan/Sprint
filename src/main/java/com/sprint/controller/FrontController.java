@@ -9,9 +9,13 @@ import jakarta.servlet.http.*;
 import com.sprint.annotation.AnnotationController;
 import com.sprint.annotation.GET;
 import com.sprint.annotation.Param;
+import com.sprint.annotation.ModelAttribute;
+import com.sprint.annotation.ParamField;
 import com.sprint.controller.Mapping;
 import com.sprint.framework.ModelView;
 import java.util.Map;
+import com.thoughtworks.paranamer.AdaptiveParanamer;
+import com.thoughtworks.paranamer.Paranamer;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
@@ -70,16 +74,18 @@ public class FrontController extends HttpServlet {
         response.setContentType("text/html;charset=UTF-8");
         PrintWriter out = response.getWriter();
         try {
-            String path = request.getServletPath();
-            if (path == null || path.isEmpty()) {
-                path = "/";
-            }
-            // Truncate query parameters
-            if (path.contains("?")) {
-                path = path.substring(0, path.indexOf("?"));
-            }
-            // Normalize path: remove trailing slashes
-            path = path.replaceAll("/+$", "");
+        String path = request.getServletPath();
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        } else if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        // Truncate query parameters
+        if (path.contains("?")) {
+            path = path.substring(0, path.indexOf("?"));
+        }
+        // Normalize path: remove trailing slashes
+        path = path.replaceAll("/+$", "");
             System.out.println("[DEBUG] Processing request for path: " + path);
 
             // Handle static resources using default servlet
@@ -108,13 +114,28 @@ public class FrontController extends HttpServlet {
                     Parameter[] parameters = method.getParameters();
                     Object[] args = new Object[parameters.length];
                     
+                    // Use Paranamer to get parameter names
+                    Paranamer paranamer = new AdaptiveParanamer();
+                    String[] paramNames = paranamer.lookupParameterNames(method);
+                    
                     for (int i = 0; i < parameters.length; i++) {
-                        Param paramAnnotation = parameters[i].getAnnotation(Param.class);
-                        if (paramAnnotation != null) {
-                            String paramName = paramAnnotation.name();
-                            args[i] = request.getParameter(paramName);
+                        if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
+                            // Handle object parameter
+                            Class<?> paramType = parameters[i].getType();
+                            Object obj = instantiateObject(paramType);
+                            populateObjectFromRequest(obj, request);
+                            args[i] = obj;
                         } else {
-                            throw new ServletException("Parameter " + i + " in method " + method.getName() + " is not annotated with @Param");
+                            // Handle simple parameter
+                            Param paramAnnotation = parameters[i].getAnnotation(Param.class);
+                            String paramName;
+                            if (paramAnnotation != null) {
+                                paramName = paramAnnotation.name();
+                            } else {
+                                paramName = paramNames[i];
+                            }
+                            String value = request.getParameter(paramName);
+                            args[i] = convertValue(value, parameters[i].getType());
                         }
                     }
             
@@ -167,6 +188,67 @@ public class FrontController extends HttpServlet {
                 out.close();
             }
         }
+    }
+
+    // Helper method to instantiate object
+    private Object instantiateObject(Class<?> clazz) throws ServletException {
+        try {
+            return clazz.getDeclaredConstructor().newInstance();
+        } catch (Exception e) {
+            throw new ServletException("Failed to instantiate object: " + clazz.getName(), e);
+        }
+    }
+
+    // Helper method to populate object fields from request
+    private void populateObjectFromRequest(Object obj, HttpServletRequest request) {
+        Class<?> clazz = obj.getClass();
+        for (Field field : clazz.getDeclaredFields()) {
+            ParamField paramField = field.getAnnotation(ParamField.class);
+            String paramName = (paramField != null && !paramField.value().isEmpty()) ? 
+                                paramField.value() : field.getName();
+            String value = request.getParameter(paramName);
+            if (value != null) {
+                try {
+                    field.setAccessible(true);
+                    field.set(obj, convertValue(value, field.getType()));
+                } catch (IllegalAccessException e) {
+                    // Log or handle exception
+                }
+            }
+        }
+    }
+
+    // Helper method for type conversion
+    private Object convertValue(String value, Class<?> targetType) {
+        if (value == null || value.isEmpty()) {
+            // Return default values for primitive types
+            if (targetType == int.class) return 0;
+            if (targetType == double.class) return 0.0;
+            if (targetType == boolean.class) return false;
+            if (targetType == long.class) return 0L;
+            return null;
+        }
+        
+        try {
+            if (targetType == String.class) {
+                return value;
+            } else if (targetType == int.class || targetType == Integer.class) {
+                return Integer.parseInt(value);
+            } else if (targetType == double.class || targetType == Double.class) {
+                return Double.parseDouble(value);
+            } else if (targetType == boolean.class || targetType == Boolean.class) {
+                return Boolean.parseBoolean(value);
+            } else if (targetType == long.class || targetType == Long.class) {
+                return Long.parseLong(value);
+            }
+        } catch (NumberFormatException e) {
+            // Return default values on conversion error
+            if (targetType == int.class) return 0;
+            if (targetType == double.class) return 0.0;
+            if (targetType == boolean.class) return false;
+            if (targetType == long.class) return 0L;
+        }
+        return value;
     }
 
     @Override
