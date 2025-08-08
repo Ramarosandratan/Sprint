@@ -9,6 +9,8 @@ import jakarta.servlet.http.*;
 import com.sprint.annotation.AnnotationController;
 import com.sprint.annotation.GET;
 import com.sprint.controller.Mapping;
+import com.sprint.framework.ModelView;
+import java.util.Map;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
@@ -24,9 +26,11 @@ public class FrontController extends HttpServlet {
     }
 
     private void scanControllers(String packageName) {
+        System.out.println("[DEBUG] Scanning package: " + packageName);
         String path = packageName.replace('.', '/');
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         URL resource = classLoader.getResource(path);
+        int mappingCount = 0;
         
         if (resource != null) {
             File directory = new File(resource.getFile());
@@ -44,6 +48,9 @@ public class FrontController extends HttpServlet {
                                             GET getAnnotation = method.getAnnotation(GET.class);
                                             String url = getAnnotation.value();
                                             mappings.put(url, new Mapping(clazz.getName(), method.getName()));
+                                            System.out.println("[DEBUG] Mapped URL: " + url + " -> " + 
+                                                             clazz.getSimpleName() + "." + method.getName());
+                                            mappingCount++;
                                         }
                                     }
                                 }
@@ -66,6 +73,9 @@ public class FrontController extends HttpServlet {
             if (path == null || path.isEmpty()) {
                 path = "/";
             }
+            // Normalize path: remove trailing slashes
+            path = path.replaceAll("/+$", "");
+            System.out.println("[DEBUG] Processing request for path: " + path);
             
             Mapping mapping = mappings.get(path);
             if (mapping != null) {
@@ -79,11 +89,33 @@ public class FrontController extends HttpServlet {
                     // Get method
                     Method method = clazz.getDeclaredMethod(mapping.getMethodName());
                     
-                    // Invoke method and get result
-                    Object result = method.invoke(instance);
-                    
-                    // Write result to response
+                // Invoke method and get result
+                Object result = method.invoke(instance);
+                
+                // Handle different return types
+                if (result instanceof String) {
+                    String resultStr = (String) result;
+                    if (resultStr.startsWith("view:")) {
+                        // View dispatch
+                        String viewPath = resultStr.substring(5);
+                        RequestDispatcher dispatcher = request.getRequestDispatcher(viewPath);
+                        dispatcher.forward(request, response);
+                    } else {
+                        // Direct content
+                        out.println(resultStr);
+                    }
+                } else if (result instanceof ModelView) {
+                    // ModelView handling
+                    ModelView mv = (ModelView) result;
+                    for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                        request.setAttribute(entry.getKey(), entry.getValue());
+                    }
+                    RequestDispatcher dispatcher = request.getRequestDispatcher(mv.getUrl());
+                    dispatcher.forward(request, response);
+                } else {
+                    // Fallback to string representation
                     out.println(result);
+                }
                 } catch (ClassNotFoundException e) {
                     out.println("Classe non trouvée: " + e.getMessage());
                 } catch (NoSuchMethodException e) {
@@ -96,10 +128,13 @@ public class FrontController extends HttpServlet {
                     out.println("Erreur d'instanciation: " + e.getMessage());
                 }
             } else {
+                System.out.println("[DEBUG] No mapping found for path: " + path);
                 out.println("Aucune méthode associée à l’URL");
             }
         } finally {
-            out.close();
+            if (!response.isCommitted()) {
+                out.close();
+            }
         }
     }
 
