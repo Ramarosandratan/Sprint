@@ -69,10 +69,34 @@ public class FrontController extends HttpServlet {
             
             Mapping mapping = mappings.get(path);
             if (mapping != null) {
-                out.println("Mapped URL: " + path + "<br>");
-                out.println("Mapping: " + mapping + "<br>");
+                try {
+                    // Load class
+                    Class<?> clazz = Class.forName(mapping.getClassName());
+                    
+                    // Create instance
+                    Object instance = clazz.getDeclaredConstructor().newInstance();
+                    
+                    // Get method
+                    Method method = clazz.getDeclaredMethod(mapping.getMethodName());
+                    
+                    // Invoke method and get result
+                    Object result = method.invoke(instance);
+                    
+                    // Write result to response
+                    out.println(result);
+                } catch (ClassNotFoundException e) {
+                    out.println("Classe non trouvée: " + e.getMessage());
+                } catch (NoSuchMethodException e) {
+                    out.println("Méthode non trouvée: " + e.getMessage());
+                } catch (IllegalAccessException e) {
+                    out.println("Accès non autorisé: " + e.getMessage());
+                } catch (InvocationTargetException e) {
+                    out.println("Erreur dans la méthode: " + e.getCause().getMessage());
+                } catch (InstantiationException e) {
+                    out.println("Erreur d'instanciation: " + e.getMessage());
+                }
             } else {
-                out.println("No mapping found for: " + path + "<br>");
+                out.println("Aucune méthode associée à l’URL");
             }
         } finally {
             out.close();

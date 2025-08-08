@@ -8,13 +8,7 @@ import java.io.*;
 @AnnotationController
 public class ExampleController {
     @GET("/hello")
-    public void sayHello(HttpServletRequest req, HttpServletResponse res) throws IOException {
-        res.setContentType("text/html;charset=UTF-8");
-        PrintWriter out = res.getWriter();
-        try {
-            out.println("Hello from annotated method!");
-        } finally {
-            out.close();
-        }
+    public String sayHello() {
+        return "Hello from annotated method!";
     }
 }
