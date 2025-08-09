@@ -24,6 +24,19 @@
             <version>6.1.0</version>
             <scope>provided</scope>
         </dependency>
+        <!-- JSON-B API -->
+        <dependency>
+            <groupId>jakarta.json.bind</groupId>
+            <artifactId>jakarta.json.bind-api</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <!-- JSON-B Implementation -->
+        <dependency>
+            <groupId>org.eclipse</groupId>
+            <artifactId>yasson</artifactId>
+            <version>3.0.3</version>
+            <scope>runtime</scope>
+        </dependency>
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-api</artifactId>

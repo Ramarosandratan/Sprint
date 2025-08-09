@@ -3,11 +3,14 @@ package com.sprint.model;
 import com.sprint.annotation.ParamField;
 
 public class User {
-    @ParamField("first_name")
+    @ParamField("name") // Map "name" parameter to firstName
     private String firstName;
     
     @ParamField
     private String lastName;
+    
+    @ParamField
+    private String email; // New email field
     
     @ParamField
     private int age;
@@ -29,6 +32,14 @@ public class User {
         this.lastName = lastName;
     }
 
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
     public int getAge() {
         return age;
     }
@@ -39,6 +50,6 @@ public class User {
     
     @Override
     public String toString() {
-        return "User [firstName=" + firstName + ", lastName=" + lastName + ", age=" + age + "]";
+        return "User [firstName=" + firstName + ", lastName=" + lastName + ", email=" + email + ", age=" + age + "]";
     }
 }

@@ -16,11 +16,14 @@ import com.sprint.controller.Mapping;
 import com.sprint.framework.ModelView;
 import com.sprint.framework.MySession;
 import java.util.Map;
+import jakarta.json.bind.Jsonb;
+import jakarta.json.bind.JsonbBuilder;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
     private HashMap<String, Mapping> mappings = new HashMap<>();
     private boolean scanned = false;
+    private Jsonb jsonb;
 
     public void init() {
         String packageName = getInitParameter("controller-package");
@@ -28,6 +31,23 @@ public class FrontController extends HttpServlet {
             scanControllers(packageName);
             scanned = true;
         }
+        try {
+            jsonb = JsonbBuilder.create();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to create JSON-B instance", e);
+        }
+    }
+    
+    @Override
+    public void destroy() {
+        try {
+            if (jsonb != null) {
+                jsonb.close();
+            }
+        } catch (Exception e) {
+            // Log error
+        }
+        super.destroy();
     }
 
     private void scanControllers(String packageName) {
@@ -180,8 +200,10 @@ public class FrontController extends HttpServlet {
                     RequestDispatcher dispatcher = request.getRequestDispatcher(mv.getUrl());
                     dispatcher.forward(request, response);
                 } else {
-                    // Fallback to string representation
-                    out.println(result);
+                    // JSON response handling
+                    response.setContentType("application/json");
+                    String json = jsonb.toJson(result);
+                    out.println(json);
                 }
                 } catch (ClassNotFoundException e) {
                     out.println("Classe non trouvée: " + e.getMessage());
