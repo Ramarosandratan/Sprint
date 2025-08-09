@@ -8,11 +8,13 @@ import jakarta.servlet.*;
 import jakarta.servlet.http.*;
 import com.sprint.annotation.AnnotationController;
 import com.sprint.annotation.GET;
+import com.sprint.annotation.POST;
 import com.sprint.annotation.Param;
 import com.sprint.annotation.ModelAttribute;
 import com.sprint.annotation.ParamField;
 import com.sprint.controller.Mapping;
 import com.sprint.framework.ModelView;
+import com.sprint.framework.MySession;
 import java.util.Map;
 
 @AnnotationController
@@ -47,14 +49,22 @@ public class FrontController extends HttpServlet {
                                 Class<?> clazz = Class.forName(className);
                                 if (clazz.isAnnotationPresent(AnnotationController.class)) {
                                     for (Method method : clazz.getDeclaredMethods()) {
-                                        if (method.isAnnotationPresent(GET.class)) {
-                                            GET getAnnotation = method.getAnnotation(GET.class);
-                                            String url = getAnnotation.value();
-                                            mappings.put(url, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes()));
-                                            System.out.println("[DEBUG] Mapped URL: " + url + " -> " + 
-                                                             clazz.getSimpleName() + "." + method.getName());
-                                            mappingCount++;
-                                        }
+                                if (method.isAnnotationPresent(GET.class)) {
+                                    GET getAnnotation = method.getAnnotation(GET.class);
+                                    String url = getAnnotation.value();
+                                    mappings.put("GET:" + url, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), "GET"));
+                                    System.out.println("[DEBUG] Mapped GET: " + url + " -> " + 
+                                                     clazz.getSimpleName() + "." + method.getName());
+                                    mappingCount++;
+                                }
+                                if (method.isAnnotationPresent(POST.class)) {
+                                    POST postAnnotation = method.getAnnotation(POST.class);
+                                    String url = postAnnotation.value();
+                                    mappings.put("POST:" + url, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), "POST"));
+                                    System.out.println("[DEBUG] Mapped POST: " + url + " -> " + 
+                                                     clazz.getSimpleName() + "." + method.getName());
+                                    mappingCount++;
+                                }
                                     }
                                 }
                             } catch (ClassNotFoundException e) {
@@ -72,19 +82,21 @@ public class FrontController extends HttpServlet {
         response.setContentType("text/html;charset=UTF-8");
         PrintWriter out = response.getWriter();
         try {
-        String path = request.getServletPath();
-        if (path == null || path.isEmpty()) {
-            path = "/";
-        } else if (!path.startsWith("/")) {
-            path = "/" + path;
-        }
-        // Truncate query parameters
-        if (path.contains("?")) {
-            path = path.substring(0, path.indexOf("?"));
-        }
-        // Normalize path: remove trailing slashes
-        path = path.replaceAll("/+$", "");
-            System.out.println("[DEBUG] Processing request for path: " + path);
+            String httpMethod = request.getMethod(); // GET, POST, etc.
+            String path = request.getServletPath();
+            if (path == null || path.isEmpty()) {
+                path = "/";
+            } else if (!path.startsWith("/")) {
+                path = "/" + path;
+            }
+            // Truncate query parameters
+            if (path.contains("?")) {
+                path = path.substring(0, path.indexOf("?"));
+            }
+            // Normalize path: remove trailing slashes
+            path = path.replaceAll("/+$", "");
+            String key = httpMethod + ":" + path;
+            System.out.println("[DEBUG] Processing request: " + key);
 
             // Handle static resources using default servlet
             if (path.matches(".*\\.(html|css|js|png|jpg|jpeg|gif|ico)$")) {
@@ -93,7 +105,7 @@ public class FrontController extends HttpServlet {
                 return;
             }
             
-            Mapping mapping = mappings.get(path);
+            Mapping mapping = mappings.get(key);
             if (mapping != null) {
                 try {
                     // Load class
@@ -113,7 +125,14 @@ public class FrontController extends HttpServlet {
                     Object[] args = new Object[parameters.length];
                     
                     for (int i = 0; i < parameters.length; i++) {
-                        if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
+                        if (parameters[i].getType() == HttpServletRequest.class) {
+                            // Handle HttpServletRequest parameter
+                            args[i] = request;
+                        } else if (parameters[i].getType() == MySession.class) {
+                            // Handle MySession parameter
+                            HttpSession httpSession = request.getSession();
+                            args[i] = new MySession(httpSession);
+                        } else if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
                             // Handle object parameter
                             Class<?> paramType = parameters[i].getType();
                             Object obj = instantiateObject(paramType);
@@ -136,20 +155,24 @@ public class FrontController extends HttpServlet {
             // Invoke method with arguments
             Object result = method.invoke(instance, args);
                 
-                // Handle different return types
-                if (result instanceof String) {
-                    String resultStr = (String) result;
-                    if (resultStr.startsWith("view:")) {
-                        // View dispatch
-                        String viewPath = resultStr.substring(5);
-                        RequestDispatcher dispatcher = request.getRequestDispatcher(viewPath);
-                        dispatcher.forward(request, response);
-                    } else {
-                        // Direct content
-                        out.println(resultStr);
-                    }
-                } else if (result instanceof ModelView) {
-                    // ModelView handling
+            // Handle different return types
+            if (result instanceof String) {
+                String resultStr = (String) result;
+                if (resultStr.startsWith("redirect:")) {
+                    // Redirect to URL
+                    String redirectUrl = resultStr.substring(9);
+                    response.sendRedirect(redirectUrl);
+                } else if (resultStr.startsWith("view:")) {
+                    // View dispatch
+                    String viewPath = resultStr.substring(5);
+                    RequestDispatcher dispatcher = request.getRequestDispatcher(viewPath);
+                    dispatcher.forward(request, response);
+                } else {
+                    // Direct content
+                    out.println(resultStr);
+                }
+            } else if (result instanceof ModelView) {
+                // ModelView handling
                     ModelView mv = (ModelView) result;
                     for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
                         request.setAttribute(entry.getKey(), entry.getValue());
