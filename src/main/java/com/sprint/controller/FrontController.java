@@ -14,8 +14,6 @@ import com.sprint.annotation.ParamField;
 import com.sprint.controller.Mapping;
 import com.sprint.framework.ModelView;
 import java.util.Map;
-import com.thoughtworks.paranamer.AdaptiveParanamer;
-import com.thoughtworks.paranamer.Paranamer;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
@@ -114,10 +112,6 @@ public class FrontController extends HttpServlet {
                     Parameter[] parameters = method.getParameters();
                     Object[] args = new Object[parameters.length];
                     
-                    // Use Paranamer to get parameter names
-                    Paranamer paranamer = new AdaptiveParanamer();
-                    String[] paramNames = paranamer.lookupParameterNames(method);
-                    
                     for (int i = 0; i < parameters.length; i++) {
                         if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
                             // Handle object parameter
@@ -132,7 +126,7 @@ public class FrontController extends HttpServlet {
                             if (paramAnnotation != null) {
                                 paramName = paramAnnotation.name();
                             } else {
-                                paramName = paramNames[i];
+                                paramName = parameters[i].getName();
                             }
                             String value = request.getParameter(paramName);
                             args[i] = convertValue(value, parameters[i].getType());
