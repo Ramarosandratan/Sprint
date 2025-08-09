@@ -12,6 +12,9 @@ import com.sprint.annotation.POST;
 import com.sprint.annotation.Param;
 import com.sprint.annotation.ModelAttribute;
 import com.sprint.annotation.ParamField;
+import com.sprint.annotation.url;
+import com.sprint.exception.MethodNotAllowedException;
+import com.sprint.exception.NotFoundException;
 import com.sprint.controller.Mapping;
 import com.sprint.framework.ModelView;
 import com.sprint.framework.MySession;
@@ -68,24 +71,32 @@ public class FrontController extends HttpServlet {
                             try {
                                 Class<?> clazz = Class.forName(className);
                                 if (clazz.isAnnotationPresent(AnnotationController.class)) {
-                                    for (Method method : clazz.getDeclaredMethods()) {
-                                if (method.isAnnotationPresent(GET.class)) {
-                                    GET getAnnotation = method.getAnnotation(GET.class);
-                                    String url = getAnnotation.value();
-                                    mappings.put("GET:" + url, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), "GET"));
-                                    System.out.println("[DEBUG] Mapped GET: " + url + " -> " + 
-                                                     clazz.getSimpleName() + "." + method.getName());
-                                    mappingCount++;
-                                }
-                                if (method.isAnnotationPresent(POST.class)) {
-                                    POST postAnnotation = method.getAnnotation(POST.class);
-                                    String url = postAnnotation.value();
-                                    mappings.put("POST:" + url, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), "POST"));
-                                    System.out.println("[DEBUG] Mapped POST: " + url + " -> " + 
-                                                     clazz.getSimpleName() + "." + method.getName());
-                                    mappingCount++;
-                                }
-                                    }
+                for (Method method : clazz.getDeclaredMethods()) {
+                    boolean hasGet = method.isAnnotationPresent(GET.class);
+                    boolean hasPost = method.isAnnotationPresent(POST.class);
+                    boolean hasUrl = method.isAnnotationPresent(url.class);
+
+                    // Skip methods without URL annotation
+                    if (!hasUrl) continue;
+
+                    // Handle methods without explicit annotation (default to GET)
+                    if (!hasGet && !hasPost) {
+                        hasGet = true;
+                    }
+
+                    if (hasGet && hasPost) {
+                        throw new RuntimeException("Method cannot have both @GET and @POST: " + 
+                                                  method.getName());
+                    }
+
+                    String verb = hasGet ? "GET" : "POST";
+                    String urlPath = method.getAnnotation(url.class).value();
+
+                    mappings.put(verb + ":" + urlPath, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), verb));
+                    System.out.println("[DEBUG] Mapped " + verb + ": " + urlPath + " -> " + 
+                                     clazz.getSimpleName() + "." + method.getName());
+                    mappingCount++;
+                }
                                 }
                             } catch (ClassNotFoundException e) {
                                 // Ignorer les classes non trouvées
@@ -127,6 +138,11 @@ public class FrontController extends HttpServlet {
             
             Mapping mapping = mappings.get(key);
             if (mapping != null) {
+                // Verify HTTP method matches
+                if (!mapping.getHttpMethod().equals(httpMethod)) {
+                    throw new MethodNotAllowedException("Method " + httpMethod + " not allowed for URL " + path);
+                }
+                
                 try {
                     // Load class
                     Class<?> clazz = Class.forName(mapping.getClassName());
@@ -219,14 +235,32 @@ public class FrontController extends HttpServlet {
             out.println("Erreur de servlet: " + e.getMessage());
         }
             } else {
-                System.out.println("[DEBUG] No mapping found for path: " + path);
-                out.println("Aucune méthode associée à l’URL");
+                // Check if path exists with different method
+                boolean pathExists = false;
+                for (String mappingKey : mappings.keySet()) {
+                    if (mappingKey.endsWith(path)) {
+                        pathExists = true;
+                        break;
+                    }
+                }
+                
+                if (pathExists) {
+                    throw new MethodNotAllowedException("Method " + httpMethod + " not allowed for URL " + path);
+                } else {
+                    throw new NotFoundException("Resource " + path + " not found");
+                }
             }
-        } finally {
-            if (!response.isCommitted()) {
-                out.close();
+            } catch (MethodNotAllowedException e) {
+                response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+                response.getWriter().println(e.getMessage());
+            } catch (NotFoundException e) {
+                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+                response.getWriter().println(e.getMessage());
+            } finally {
+                if (!response.isCommitted()) {
+                    out.close();
+                }
             }
-        }
     }
 
     // Helper method to instantiate object

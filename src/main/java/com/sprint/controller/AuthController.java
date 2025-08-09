@@ -3,6 +3,7 @@ package com.sprint.controller;
 import com.sprint.annotation.AnnotationController;
 import com.sprint.annotation.GET;
 import com.sprint.annotation.POST;
+import com.sprint.annotation.url;
 import com.sprint.framework.ModelView;
 import com.sprint.framework.MySession;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,12 +19,14 @@ public class AuthController {
         "user", "password123"
     );
 
-    @GET("/login")
+    @GET
+    @url("/login")
     public String showLogin() {
         return "view:/login.jsp";
     }
 
-    @POST("/login")
+    @POST
+    @url("/login")
     public Object login(HttpServletRequest request, String username, String password, MySession session) {
         System.out.println("[AuthController] Login attempt - username: " + username + ", password: " + password);
         
@@ -43,7 +46,8 @@ public class AuthController {
         }
     }
 
-    @GET("/user-data")
+    @GET
+    @url("/user-data")
     public ModelView userData(MySession session) {
         String username = (String) session.get("user");
         if (username == null) {
@@ -64,7 +68,8 @@ public class AuthController {
         return modelView;
     }
 
-    @GET("/logout")
+    @GET
+    @url("/logout")
     public ModelView logout(MySession session) {
         // Remove user from session
         session.delete("user");

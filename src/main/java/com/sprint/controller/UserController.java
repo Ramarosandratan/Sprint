@@ -3,24 +3,27 @@ package com.sprint.controller;
 import com.sprint.annotation.AnnotationController;
 import com.sprint.annotation.GET;
 import com.sprint.annotation.ModelAttribute;
+import com.sprint.annotation.Param;
+import com.sprint.annotation.url;
 import com.sprint.framework.ModelView;
 import com.sprint.model.User;
+import jakarta.servlet.http.HttpServletRequest;
 
 @AnnotationController
 public class UserController {
-    
-    // Existing endpoint for JSP view
-    @GET("/saveUser")
+
+    @GET
+    @url("/saveUser")
     public ModelView saveUser(@ModelAttribute User user) {
-        ModelView mv = new ModelView("user.jsp");
-        mv.addObject("user", user);
-        return mv;
+        ModelView modelView = new ModelView("confirmation.jsp");
+        modelView.addObject("user", user);
+        return modelView;
     }
-    
+
     // New endpoint for JSON API
-    @GET("/api/saveUser")
+    @GET
+    @url("/api/saveUser")
     public User saveUserApi(@ModelAttribute User user) {
-        // Will be serialized to JSON using JSON-B
         return user;
     }
 }
