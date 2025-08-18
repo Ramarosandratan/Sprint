@@ -21,18 +21,52 @@ import com.sprint.framework.MySession;
 import java.util.Map;
 import jakarta.json.bind.Jsonb;
 import jakarta.json.bind.JsonbBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @AnnotationController
 public class FrontController extends HttpServlet {
+    private static final Logger logger = LoggerFactory.getLogger(FrontController.class);
     private HashMap<String, Mapping> mappings = new HashMap<>();
+    private HashMap<String, Object> controllerInstances = new HashMap<>();
     private boolean scanned = false;
     private Jsonb jsonb;
 
     public void init() {
-        String packageName = getInitParameter("controller-package");
-        if (packageName != null && !scanned) {
-            scanControllers(packageName);
+        String controllerClasses = getInitParameter("controller-classes");
+        if (controllerClasses != null && !controllerClasses.isEmpty() && !scanned) {
+            // Chargement explicite des classes contrôleurs
+            String[] classNames = controllerClasses.split(",");
+            for (String className : classNames) {
+                className = className.trim();
+                try {
+                    Class<?> clazz = Class.forName(className);
+                    if (clazz.isAnnotationPresent(AnnotationController.class)) {
+                        for (Method method : clazz.getDeclaredMethods()) {
+                            boolean hasGet = method.isAnnotationPresent(GET.class);
+                            boolean hasPost = method.isAnnotationPresent(POST.class);
+                            boolean hasUrl = method.isAnnotationPresent(url.class);
+
+                            if (!hasUrl) continue;
+                            if (!hasGet && !hasPost) hasGet = true;
+                            if (hasGet && hasPost) throw new RuntimeException("Method cannot have both @GET and @POST: " + method.getName());
+
+                            String verb = hasGet ? "GET" : "POST";
+                            String urlPath = method.getAnnotation(url.class).value();
+                            mappings.put(verb + ":" + urlPath, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), verb));
+                        }
+                    }
+                } catch (ClassNotFoundException e) {
+                    // Ignorer les classes non trouvées
+                }
+            }
             scanned = true;
+        } else {
+            String packageName = getInitParameter("controller-package");
+            if (packageName != null && !scanned) {
+                scanControllers(packageName);
+                scanned = true;
+            }
         }
         try {
             jsonb = JsonbBuilder.create();
@@ -54,7 +88,7 @@ public class FrontController extends HttpServlet {
     }
 
     private void scanControllers(String packageName) {
-        System.out.println("[DEBUG] Scanning package: " + packageName);
+        logger.debug("Scanning package: {}", packageName);
         String path = packageName.replace('.', '/');
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         URL resource = classLoader.getResource(path);
@@ -93,8 +127,7 @@ public class FrontController extends HttpServlet {
                     String urlPath = method.getAnnotation(url.class).value();
 
                     mappings.put(verb + ":" + urlPath, new Mapping(clazz.getName(), method.getName(), method.getParameterTypes(), verb));
-                    System.out.println("[DEBUG] Mapped " + verb + ": " + urlPath + " -> " + 
-                                     clazz.getSimpleName() + "." + method.getName());
+                    logger.debug("Mapped {}: {} -> {}.{}", verb, urlPath, clazz.getSimpleName(), method.getName());
                     mappingCount++;
                 }
                                 }
@@ -113,114 +146,29 @@ public class FrontController extends HttpServlet {
         response.setContentType("text/html;charset=UTF-8");
         PrintWriter out = response.getWriter();
         try {
-            String httpMethod = request.getMethod(); // GET, POST, etc.
-            String path = request.getServletPath();
-            if (path == null || path.isEmpty()) {
-                path = "/";
-            } else if (!path.startsWith("/")) {
-                path = "/" + path;
-            }
-            // Truncate query parameters
-            if (path.contains("?")) {
-                path = path.substring(0, path.indexOf("?"));
-            }
-            // Normalize path: remove trailing slashes
-            path = path.replaceAll("/+$", "");
+            String httpMethod = request.getMethod();
+            String path = normalizePath(request.getServletPath());
             String key = httpMethod + ":" + path;
-            System.out.println("[DEBUG] Processing request: " + key);
+            logger.debug("Processing request: {}", key);
 
-            // Handle static resources using default servlet
-            if (path.matches(".*\\.(html|css|js|png|jpg|jpeg|gif|ico)$")) {
+            // Gestion des ressources statiques
+            if (isStaticResource(path)) {
                 RequestDispatcher rd = request.getServletContext().getNamedDispatcher("default");
                 rd.forward(request, response);
                 return;
             }
-            
+
             Mapping mapping = mappings.get(key);
             if (mapping != null) {
-                // Verify HTTP method matches
                 if (!mapping.getHttpMethod().equals(httpMethod)) {
                     throw new MethodNotAllowedException("Method " + httpMethod + " not allowed for URL " + path);
                 }
-                
                 try {
-                    // Load class
-                    Class<?> clazz = Class.forName(mapping.getClassName());
-                    
-                    // Create instance
-                    Object instance = clazz.getDeclaredConstructor().newInstance();
-                    
-                    // Get method with parameter types
-                    Method method = clazz.getDeclaredMethod(
-                        mapping.getMethodName(), 
-                        mapping.getParameterTypes()
-                    );
-                    
-                    // Get method parameters
-                    Parameter[] parameters = method.getParameters();
-                    Object[] args = new Object[parameters.length];
-                    
-                    for (int i = 0; i < parameters.length; i++) {
-                        if (parameters[i].getType() == HttpServletRequest.class) {
-                            // Handle HttpServletRequest parameter
-                            args[i] = request;
-                        } else if (parameters[i].getType() == MySession.class) {
-                            // Handle MySession parameter
-                            HttpSession httpSession = request.getSession();
-                            args[i] = new MySession(httpSession);
-                        } else if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
-                            // Handle object parameter
-                            Class<?> paramType = parameters[i].getType();
-                            Object obj = instantiateObject(paramType);
-                            populateObjectFromRequest(obj, request);
-                            args[i] = obj;
-                        } else {
-                            // Handle simple parameter
-                            Param paramAnnotation = parameters[i].getAnnotation(Param.class);
-                            String paramName;
-                            if (paramAnnotation != null) {
-                                paramName = paramAnnotation.name();
-                            } else {
-                                paramName = parameters[i].getName();
-                            }
-                            String value = request.getParameter(paramName);
-                            args[i] = convertValue(value, parameters[i].getType());
-                        }
-                    }
-            
-            // Invoke method with arguments
-            Object result = method.invoke(instance, args);
-                
-            // Handle different return types
-            if (result instanceof String) {
-                String resultStr = (String) result;
-                if (resultStr.startsWith("redirect:")) {
-                    // Redirect to URL
-                    String redirectUrl = resultStr.substring(9);
-                    response.sendRedirect(redirectUrl);
-                } else if (resultStr.startsWith("view:")) {
-                    // View dispatch
-                    String viewPath = resultStr.substring(5);
-                    RequestDispatcher dispatcher = request.getRequestDispatcher(viewPath);
-                    dispatcher.forward(request, response);
-                } else {
-                    // Direct content
-                    out.println(resultStr);
-                }
-            } else if (result instanceof ModelView) {
-                // ModelView handling
-                    ModelView mv = (ModelView) result;
-                    for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
-                        request.setAttribute(entry.getKey(), entry.getValue());
-                    }
-                    RequestDispatcher dispatcher = request.getRequestDispatcher(mv.getUrl());
-                    dispatcher.forward(request, response);
-                } else {
-                    // JSON response handling
-                    response.setContentType("application/json");
-                    String json = jsonb.toJson(result);
-                    out.println(json);
-                }
+                    Object result = invokeController(mapping, request, response);
+                    handleControllerResult(result, request, response, out);
+                } catch (IllegalArgumentException e) {
+                    response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                    out.println("Erreur de paramètre : " + e.getMessage());
                 } catch (ClassNotFoundException e) {
                     out.println("Classe non trouvée: " + e.getMessage());
                 } catch (NoSuchMethodException e) {
@@ -229,13 +177,12 @@ public class FrontController extends HttpServlet {
                     out.println("Accès non autorisé: " + e.getMessage());
                 } catch (InvocationTargetException e) {
                     out.println("Erreur dans la méthode: " + e.getCause().getMessage());
-        } catch (InstantiationException e) {
-            out.println("Erreur d'instanciation: " + e.getMessage());
-        } catch (ServletException e) {
-            out.println("Erreur de servlet: " + e.getMessage());
-        }
+                } catch (InstantiationException e) {
+                    out.println("Erreur d'instanciation: " + e.getMessage());
+                } catch (ServletException e) {
+                    out.println("Erreur de servlet: " + e.getMessage());
+                }
             } else {
-                // Check if path exists with different method
                 boolean pathExists = false;
                 for (String mappingKey : mappings.keySet()) {
                     if (mappingKey.endsWith(path)) {
@@ -243,24 +190,104 @@ public class FrontController extends HttpServlet {
                         break;
                     }
                 }
-                
                 if (pathExists) {
                     throw new MethodNotAllowedException("Method " + httpMethod + " not allowed for URL " + path);
                 } else {
                     throw new NotFoundException("Resource " + path + " not found");
                 }
             }
-            } catch (MethodNotAllowedException e) {
-                response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
-                response.getWriter().println(e.getMessage());
-            } catch (NotFoundException e) {
-                response.setStatus(HttpServletResponse.SC_NOT_FOUND);
-                response.getWriter().println(e.getMessage());
-            } finally {
-                if (!response.isCommitted()) {
-                    out.close();
-                }
+        } catch (MethodNotAllowedException e) {
+            response.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
+            response.getWriter().println(e.getMessage());
+        } catch (NotFoundException e) {
+            response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+            response.getWriter().println(e.getMessage());
+        } finally {
+            if (!response.isCommitted()) {
+                out.close();
             }
+        }
+    }
+
+    // Nouvelle méthode : normalisation du chemin
+    private String normalizePath(String path) {
+        if (path == null || path.isEmpty()) {
+            path = "/";
+        } else if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        if (path.contains("?")) {
+            path = path.substring(0, path.indexOf("?"));
+        }
+        path = path.replaceAll("/+$", "");
+        return path;
+    }
+
+    // Nouvelle méthode : détection ressource statique
+    private boolean isStaticResource(String path) {
+        return path.matches(".*\\.(html|css|js|png|jpg|jpeg|gif|ico)$");
+    }
+
+    // Nouvelle méthode : invocation du contrôleur
+    private Object invokeController(Mapping mapping, HttpServletRequest request, HttpServletResponse response)
+            throws ClassNotFoundException, NoSuchMethodException, IllegalAccessException, InvocationTargetException, InstantiationException, ServletException {
+        Class<?> clazz = Class.forName(mapping.getClassName());
+        Object instance = controllerInstances.get(clazz.getName());
+        if (instance == null) {
+            instance = clazz.getDeclaredConstructor().newInstance();
+            controllerInstances.put(clazz.getName(), instance);
+        }
+        Method method = clazz.getDeclaredMethod(mapping.getMethodName(), mapping.getParameterTypes());
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+        for (int i = 0; i < parameters.length; i++) {
+            if (parameters[i].getType() == HttpServletRequest.class) {
+                args[i] = request;
+            } else if (parameters[i].getType() == MySession.class) {
+                HttpSession httpSession = request.getSession();
+                args[i] = new MySession(httpSession);
+            } else if (parameters[i].isAnnotationPresent(ModelAttribute.class)) {
+                Class<?> paramType = parameters[i].getType();
+                Object obj = instantiateObject(paramType);
+                populateObjectFromRequest(obj, request);
+                args[i] = obj;
+            } else {
+                Param paramAnnotation = parameters[i].getAnnotation(Param.class);
+                String paramName = (paramAnnotation != null) ? paramAnnotation.name() : parameters[i].getName();
+                String value = request.getParameter(paramName);
+                args[i] = convertValue(value, parameters[i].getType());
+            }
+        }
+        return method.invoke(instance, args);
+    }
+
+    // Nouvelle méthode : gestion du résultat du contrôleur
+    private void handleControllerResult(Object result, HttpServletRequest request, HttpServletResponse response, PrintWriter out)
+            throws ServletException, IOException {
+        if (result instanceof String) {
+            String resultStr = (String) result;
+            if (resultStr.startsWith("redirect:")) {
+                String redirectUrl = resultStr.substring(9);
+                response.sendRedirect(redirectUrl);
+            } else if (resultStr.startsWith("view:")) {
+                String viewPath = resultStr.substring(5);
+                RequestDispatcher dispatcher = request.getRequestDispatcher(viewPath);
+                dispatcher.forward(request, response);
+            } else {
+                out.println(resultStr);
+            }
+        } else if (result instanceof ModelView) {
+            ModelView mv = (ModelView) result;
+            for (Map.Entry<String, Object> entry : mv.getData().entrySet()) {
+                request.setAttribute(entry.getKey(), entry.getValue());
+            }
+            RequestDispatcher dispatcher = request.getRequestDispatcher(mv.getUrl());
+            dispatcher.forward(request, response);
+        } else {
+            response.setContentType("application/json");
+            String json = jsonb.toJson(result);
+            out.println(json);
+        }
     }
 
     // Helper method to instantiate object
@@ -294,14 +321,14 @@ public class FrontController extends HttpServlet {
     // Helper method for type conversion
     private Object convertValue(String value, Class<?> targetType) {
         if (value == null || value.isEmpty()) {
-            // Return default values for primitive types
-            if (targetType == int.class) return 0;
-            if (targetType == double.class) return 0.0;
-            if (targetType == boolean.class) return false;
-            if (targetType == long.class) return 0L;
+            if (targetType.isPrimitive()) {
+                if (targetType == int.class) return 0;
+                if (targetType == double.class) return 0.0;
+                if (targetType == boolean.class) return false;
+                if (targetType == long.class) return 0L;
+            }
             return null;
         }
-        
         try {
             if (targetType == String.class) {
                 return value;
@@ -315,13 +342,9 @@ public class FrontController extends HttpServlet {
                 return Long.parseLong(value);
             }
         } catch (NumberFormatException e) {
-            // Return default values on conversion error
-            if (targetType == int.class) return 0;
-            if (targetType == double.class) return 0.0;
-            if (targetType == boolean.class) return false;
-            if (targetType == long.class) return 0L;
+            throw new IllegalArgumentException("Format invalide pour le type " + targetType.getSimpleName() + " : " + value);
         }
-        return value;
+        throw new IllegalArgumentException("Type non supporté : " + targetType.getSimpleName());
     }
 
     @Override

@@ -22,46 +22,6 @@
         <yasson.version>3.0.3</yasson.version>
     </properties>
 
-<<<<<<< Updated upstream
-    <dependencies>
-        <dependency>
-            <groupId>jakarta.servlet</groupId>
-            <artifactId>jakarta.servlet-api</artifactId>
-            <version>6.1.0</version>
-            <scope>provided</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-api</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.junit.jupiter</groupId>
-            <artifactId>junit-jupiter-engine</artifactId>
-            <version>${junit.version}</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-war-plugin</artifactId>
-                <version>3.4.0</version>
-            </plugin>
-        <plugin>
-            <groupId>org.apache.tomcat.maven</groupId>
-            <artifactId>tomcat10-maven-plugin</artifactId>
-            <version>3.0.0-M1</version>
-            <configuration>
-                <tomcatHome>C:/xampp/tomcat</tomcatHome>
-                <path>/</path>
-            </configuration>
-        </plugin>
-        </plugins>
-=======
     <modules>
         <module>framework</module>
         <module>demo</module>
@@ -102,6 +62,5 @@
                 </plugin>
             </plugins>
         </pluginManagement>
->>>>>>> Stashed changes
     </build>
 </project>

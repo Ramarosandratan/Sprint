@@ -1,4 +1,14 @@
 # Sprint Framework - Projet Maven Multi-Modules
+# Plan de correction et d’optimisation Sprint Framework
+
+- [x] Correction du pom.xml parent (conflits de fusion)
+- [ ] Correction du scan des contrôleurs pour compatibilité .war
+- [ ] Mise en cache des instances de contrôleurs (singleton)
+- [ ] Refactorisation de processRequest (lisibilité, SRP)
+- [ ] Amélioration de la gestion des erreurs et conversions de types
+- [ ] Remplacement des System.out.println par un vrai logger
+- [ ] Tests de fonctionnement et validation finale
+
 
 ## 🏗️ Structure du Projet
 
@@ -137,4 +147,3 @@ copy target\sprint-demo.war C:\xampp\tomcat\webapps\
 Pour toute question ou problème, consultez :
 - Le fichier `DEPLOYMENT_GUIDE.md`
 - Les logs Tomcat
-- La documentation du framework
